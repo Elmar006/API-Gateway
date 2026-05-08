@@ -1,0 +1,86 @@
+name: api-gateway
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: apigw-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${DB_USER:-postgres}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres}
+      POSTGRES_DB: ${DB_NAME:-postgres}
+    ports:
+      - "${DB_PORT_HOST:-5432}:5432"
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-postgres} -d ${DB_NAME:-postgres}"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    networks:
+      - apigw
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    image: api-gateway/backend:dev
+    container_name: apigw-backend
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      PORT: ${PORT:-8080}
+      ADMIN_PORT: ${ADMIN_PORT:-9090}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      LOG_FORMAT: ${LOG_FORMAT:-text}
+      JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET in .env (>=16 chars)}
+      ADMIN_USERNAME: ${ADMIN_USERNAME:?set ADMIN_USERNAME in .env}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:?set ADMIN_PASSWORD in .env}
+      MAX_BODY_BYTES: ${MAX_BODY_BYTES:-10485760}
+      RATE_LIMIT_TTL: ${RATE_LIMIT_TTL:-5m}
+      LOG_BUFFER_SIZE: ${LOG_BUFFER_SIZE:-4096}
+      LOG_BATCH_SIZE: ${LOG_BATCH_SIZE:-200}
+      LOG_FLUSH_PERIOD: ${LOG_FLUSH_PERIOD:-500ms}
+      TLS_ENABLED: ${TLS_ENABLED:-false}
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USER: ${DB_USER:-postgres}
+      DB_PASSWORD: ${DB_PASSWORD:-postgres}
+      DB_NAME: ${DB_NAME:-postgres}
+      DB_SSLMODE: ${DB_SSLMODE:-disable}
+      DB_MAX_OPEN_CONNS: ${DB_MAX_OPEN_CONNS:-25}
+      DB_MAX_IDLE_CONNS: ${DB_MAX_IDLE_CONNS:-10}
+      DB_MAX_LIFETIME_MIN: ${DB_MAX_LIFETIME_MIN:-30}
+    ports:
+      - "${PORT_HOST:-8080}:8080"
+      - "${ADMIN_PORT_HOST:-9090}:9090"
+    networks:
+      - apigw
+
+  client:
+    build:
+      context: ./client
+      dockerfile: Dockerfile
+      args:
+        VITE_API_BASE_URL: ${VITE_API_BASE_URL:-/admin}
+    image: api-gateway/client:dev
+    container_name: apigw-client
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      - "${CLIENT_PORT_HOST:-8000}:80"
+    networks:
+      - apigw
+
+volumes:
+  pg_data:
+    name: apigw-pg-data
+
+networks:
+  apigw:
+    name: apigw
+    driver: bridge

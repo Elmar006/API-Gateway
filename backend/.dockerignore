@@ -1,0 +1,15 @@
+.git
+.github
+.gitignore
+.idea
+.vscode
+*.md
+!README.md
+bin/
+coverage.out
+coverage.html
+.env
+.env.local
+.env.*.local
+tmp/
+testdata/.cache
